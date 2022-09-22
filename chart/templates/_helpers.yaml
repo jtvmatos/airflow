@@ -554,10 +554,10 @@ Create the name of the triggerer service account to use
 Create the name of the dag processor service account to use
 */}}
 {{- define "dagProcessor.serviceAccountName" -}}
-{{- if .Values.dagProcessor.serviceAccount.create -}}
-    {{ default (printf "%s-dag-processor" (include "airflow.fullname" .)) .Values.dagProcessor.serviceAccount.name }}
+{{- if .Processor.serviceAccount.create -}}
+    {{ default (printf "%s-%s-dag-processor" (include "airflow.fullname" .Global) .Processor.name)  .Processor.serviceAccount.name }}
 {{- else -}}
-    {{ default "default" .Values.dagProcessor.serviceAccount.name }}
+    {{ default "default" .Processor.serviceAccount.name }}
 {{- end -}}
 {{- end -}}
 

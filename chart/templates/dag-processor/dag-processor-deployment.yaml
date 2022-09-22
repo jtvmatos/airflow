@@ -20,27 +20,30 @@
 #################################
 {{- if semverCompare ">=2.3.0" .Values.airflowVersion }}
 {{- if .Values.dagProcessor.enabled }}
-{{- $nodeSelector := or .Values.dagProcessor.nodeSelector .Values.nodeSelector }}
-{{- $affinity := or .Values.dagProcessor.affinity .Values.affinity }}
-{{- $tolerations := or .Values.dagProcessor.tolerations .Values.tolerations }}
-{{- $topologySpreadConstraints := or .Values.dagProcessor.topologySpreadConstraints .Values.topologySpreadConstraints }}
-{{- $revisionHistoryLimit := or .Values.dagProcessor.revisionHistoryLimit .Values.revisionHistoryLimit }}
 {{- $securityContext := include "airflowSecurityContext" (list . .Values.dagProcessor) }}
+{{- $Global := . }}
+{{- range .Values.dagProcessor.processor }}
+---
+{{- $nodeSelector := or .nodeSelector $Global.Values.nodeSelector }}
+{{- $affinity := or .affinity $Global.Values.affinity }}
+{{- $tolerations := or .tolerations $Global.Values.tolerations }}
+{{- $topologySpreadConstraints := or .topologySpreadConstraints $Global.Values.topologySpreadConstraints }}
+{{- $revisionHistoryLimit := or .revisionHistoryLimit $Global.Values.revisionHistoryLimit }}
 kind: Deployment
 apiVersion: apps/v1
 metadata:
-  name: {{ .Release.Name }}-dag-processor
+  name: {{ $Global.Release.Name }}-{{ .name }}
   labels:
     tier: airflow
     component: dag-processor
-    release: {{ .Release.Name }}
-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
-    heritage: {{ .Release.Service }}
-    {{- with .Values.labels }}
+    release: {{ $Global.Release.Name }}
+    chart: "{{ $Global.Chart.Name }}-{{ $Global.Chart.Version }}"
+    heritage: {{ $Global.Release.Service }}
+    {{- with $Global.Values.labels }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
 spec:
-  replicas: {{ .Values.dagProcessor.replicas }}
+  replicas: {{ .replicas }}
   {{- if $revisionHistoryLimit }}
   revisionHistoryLimit: {{ $revisionHistoryLimit }}
   {{- end }}
@@ -48,38 +51,38 @@ spec:
     matchLabels:
       tier: airflow
       component: dag-processor
-      release: {{ .Release.Name }}
-  {{- if .Values.dagProcessor.strategy }}
+      release: {{ $Global.Release.Name }}
+  {{- if .strategy }}
   strategy:
-    {{- toYaml .Values.dagProcessor.strategy | nindent 4 }}
+    {{- toYaml .strategy | nindent 4 }}
   {{- end }}
   template:
     metadata:
       labels:
         tier: airflow
         component: dag-processor
-        release: {{ .Release.Name }}
-        {{- with .Values.labels }}
+        release: {{ $Global.Release.Name }}
+        {{- with $Global.Values.labels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
       annotations:
-        checksum/metadata-secret: {{ include (print $.Template.BasePath "/secrets/metadata-connection-secret.yaml") . | sha256sum }}
-        checksum/pgbouncer-config-secret: {{ include (print $.Template.BasePath "/secrets/pgbouncer-config-secret.yaml") . | sha256sum }}
-        checksum/airflow-config: {{ include (print $.Template.BasePath "/configmaps/configmap.yaml") . | sha256sum }}
-        checksum/extra-configmaps: {{ include (print $.Template.BasePath "/configmaps/extra-configmaps.yaml") . | sha256sum }}
-        checksum/extra-secrets: {{ include (print $.Template.BasePath "/secrets/extra-secrets.yaml") . | sha256sum }}
-        {{- if .Values.dagProcessor.safeToEvict }}
+        checksum/metadata-secret: {{ include (print $Global.Template.BasePath "/secrets/metadata-connection-secret.yaml") $Global | sha256sum }}
+        checksum/pgbouncer-config-secret: {{ include (print $Global.Template.BasePath "/secrets/pgbouncer-config-secret.yaml") $Global | sha256sum }}
+        checksum/airflow-config: {{ include (print $Global.Template.BasePath "/configmaps/configmap.yaml") $Global | sha256sum }}
+        checksum/extra-configmaps: {{ include (print $Global.Template.BasePath "/configmaps/extra-configmaps.yaml") $Global | sha256sum }}
+        checksum/extra-secrets: {{ include (print $Global.Template.BasePath "/secrets/extra-secrets.yaml") $Global | sha256sum }}
+        {{- if .safeToEvict }}
         cluster-autoscaler.kubernetes.io/safe-to-evict: "true"
         {{- end }}
-        {{- if .Values.airflowPodAnnotations }}
-        {{- toYaml .Values.airflowPodAnnotations | nindent 8 }}
+        {{- if $Global.Values.airflowPodAnnotations }}
+        {{- toYaml $Global.Values.airflowPodAnnotations | nindent 8 }}
         {{- end }}
-        {{- if .Values.dagProcessor.podAnnotations }}
-        {{- toYaml .Values.dagProcessor.podAnnotations | nindent 8 }}
+        {{- if .podAnnotations }}
+        {{- toYaml .podAnnotations | nindent 8 }}
         {{- end }}
     spec:
-      {{- if .Values.dagProcessor.priorityClassName }}
-      priorityClassName: {{ .Values.dagProcessor.priorityClassName }}
+      {{- if .priorityClassName }}
+      priorityClassName: {{ .priorityClassName }}
       {{- end }}
       nodeSelector:
         {{- toYaml $nodeSelector | nindent 8 }}
@@ -100,123 +103,124 @@ spec:
         {{- toYaml $tolerations | nindent 8 }}
       topologySpreadConstraints:
         {{- toYaml $topologySpreadConstraints | nindent 8 }}
-      terminationGracePeriodSeconds: {{ .Values.dagProcessor.terminationGracePeriodSeconds }}
+      terminationGracePeriodSeconds: {{ .terminationGracePeriodSeconds }}
       restartPolicy: Always
-      serviceAccountName: {{ include "dagProcessor.serviceAccountName" . }}
+      serviceAccountName: {{ include "dagProcessor.serviceAccountName" (dict "Processor" . "Global" $Global) }}
       securityContext: {{ $securityContext | nindent 8 }}
-      {{- if or .Values.registry.secretName .Values.registry.connection }}
+      {{- if or $Global.Values.registry.secretName $Global.Values.registry.connection }}
       imagePullSecrets:
-        - name: {{ template "registry_secret" . }}
+        - name: {{ template "registry_secret" $ }}
       {{- end }}
       initContainers:
-        {{- if .Values.dagProcessor.waitForMigrations.enabled }}
+        {{- if .waitForMigrations.enabled }}
         - name: wait-for-airflow-migrations
           resources:
-            {{- toYaml .Values.dagProcessor.resources | nindent 12 }}
-          image: {{ template "airflow_image_for_migrations" . }}
-          imagePullPolicy: {{ .Values.images.airflow.pullPolicy }}
+            {{- toYaml .resources | nindent 12 }}
+          image: {{ template "airflow_image_for_migrations" $ }}
+          imagePullPolicy: {{ $Global.Values.images.airflow.pullPolicy }}
           volumeMounts:
             - name: config
-              mountPath: {{ template "airflow_config_path" . }}
+              mountPath: {{ template "airflow_config_path" $ }}
               subPath: airflow.cfg
               readOnly: true
           args:
-          {{- include "wait-for-migrations-command" . | nindent 10 }}
+          {{- include "wait-for-migrations-command" $ | nindent 10 }}
           envFrom:
-          {{- include "custom_airflow_environment_from" . | default "\n  []" | nindent 10 }}
+          {{- include "custom_airflow_environment_from" $ | default "\n  []" | nindent 10 }}
           env:
-          {{- include "custom_airflow_environment" . | nindent 10 }}
-          {{- include "standard_airflow_environment" . | nindent 10 }}
-{{- if .Values.dagProcessor.waitForMigrations.env }}
-{{ tpl (toYaml .Values.dagProcessor.waitForMigrations.env) $ | indent 12 }}
+          {{- include "custom_airflow_environment" $ | nindent 10 }}
+          {{- include "standard_airflow_environment" $ | nindent 10 }}
+{{- if .waitForMigrations.env }}
+{{ tpl (toYaml .waitForMigrations.env) $ | indent 12 }}
 {{- end }}
         {{- end }}
-        {{- if and (.Values.dags.gitSync.enabled) (not .Values.dags.persistence.enabled) }}
-        {{- include "git_sync_container" (dict "Values" .Values "is_init" "true") | nindent 8 }}
+        {{- if and ($Global.Values.dags.gitSync.enabled) (not $Global.Values.dags.persistence.enabled) }}
+        {{- include "git_sync_container" (dict "Values" $Global.Values "is_init" "true") | nindent 8 }}
         {{- end }}
-        {{- if .Values.dagProcessor.extraInitContainers }}
-        {{- toYaml .Values.dagProcessor.extraInitContainers | nindent 8 }}
+        {{- if .extraInitContainers }}
+        {{- toYaml .extraInitContainers | nindent 8 }}
         {{- end }}
       containers:
         - name: dag-processor
-          image: {{ template "airflow_image" . }}
-          imagePullPolicy: {{ .Values.images.airflow.pullPolicy }}
-          {{- if .Values.dagProcessor.command }}
-          command: {{ tpl (toYaml .Values.dagProcessor.command) . | nindent 12 }}
+          image: {{ template "airflow_image" $ }}
+          imagePullPolicy: {{ $Global.Values.images.airflow.pullPolicy }}
+          {{- if .command }}
+          command: {{ tpl (toYaml .command) $ | nindent 12 }}
           {{- end }}
-          {{- if .Values.dagProcessor.args }}
-          args: {{ tpl (toYaml .Values.dagProcessor.args) . | nindent 12 }}
+          {{- if .args }}
+          args: {{ tpl (toYaml .args) $ | nindent 12 }}
           {{- end }}
           resources:
-            {{ toYaml .Values.dagProcessor.resources | nindent 12 }}
+            {{ toYaml .resources | nindent 12 }}
           volumeMounts:
-            {{- if .Values.dagProcessor.extraVolumeMounts }}
-            {{ toYaml .Values.dagProcessor.extraVolumeMounts | nindent 12 }}
+            {{- if .extraVolumeMounts }}
+            {{ toYaml .extraVolumeMounts | nindent 12 }}
             {{- end }}
             - name: logs
-              mountPath: {{ template "airflow_logs" . }}
+              mountPath: {{ template "airflow_logs" $ }}
             - name: config
-              mountPath: {{ template "airflow_config_path" . }}
+              mountPath: {{ template "airflow_config_path" $ }}
               subPath: airflow.cfg
               readOnly: true
-            {{- if .Values.airflowLocalSettings }}
+            {{- if $Global.Values.airflowLocalSettings }}
             - name: config
-              mountPath: {{ template "airflow_local_setting_path" . }}
+              mountPath: {{ template "airflow_local_setting_path" $ }}
               subPath: airflow_local_settings.py
               readOnly: true
             {{- end }}
-            {{- if or .Values.dags.persistence.enabled .Values.dags.gitSync.enabled }}
-            {{- include "airflow_dags_mount" . | nindent 12 }}
+            {{- if or $Global.Values.dags.persistence.enabled $Global.Values.dags.gitSync.enabled }}
+            {{- include "airflow_dags_mount" $ | nindent 12 }}
             {{- end }}
           envFrom:
-          {{- include "custom_airflow_environment_from" . | default "\n  []" | nindent 10 }}
+          {{- include "custom_airflow_environment_from" $ | default "\n  []" | nindent 10 }}
           env:
-          {{- include "custom_airflow_environment" . | nindent 10 }}
-          {{- include "standard_airflow_environment" . | nindent 10 }}
-          {{- include "container_extra_envs" (list . .Values.dagProcessor.env) | indent 10 }}
+          {{- include "custom_airflow_environment" $ | nindent 10 }}
+          {{- include "standard_airflow_environment" $ | nindent 10 }}
+          {{- include "container_extra_envs" (list $ .env) | indent 10 }}
           livenessProbe:
-            initialDelaySeconds: {{ .Values.dagProcessor.livenessProbe.initialDelaySeconds }}
-            timeoutSeconds: {{ .Values.dagProcessor.livenessProbe.timeoutSeconds }}
-            failureThreshold: {{ .Values.dagProcessor.livenessProbe.failureThreshold }}
-            periodSeconds: {{ .Values.dagProcessor.livenessProbe.periodSeconds }}
+            initialDelaySeconds: {{ .livenessProbe.initialDelaySeconds }}
+            timeoutSeconds: {{ .livenessProbe.timeoutSeconds }}
+            failureThreshold: {{ .livenessProbe.failureThreshold }}
+            periodSeconds: {{ .livenessProbe.periodSeconds }}
             exec:
               command:
-                  {{- if .Values.dagProcessor.livenessProbe.command }}
-                  {{ toYaml .Values.dagProcessor.livenessProbe.command | nindent 16 }}
+                  {{- if .livenessProbe.command }}
+                  {{ toYaml .livenessProbe.command | nindent 16 }}
                   {{- else }}
-                  {{- include "dag_processor_liveness_check_command" . | nindent 16 }}
+                  {{- include "dag_processor_liveness_check_command" $ | nindent 16 }}
                   {{- end }}
-        {{- if and (.Values.dags.gitSync.enabled) (not .Values.dags.persistence.enabled) }}
-        {{- include "git_sync_container" . | indent 8 }}
+        {{- if and ($Global.Values.dags.gitSync.enabled) (not $Global.Values.dags.persistence.enabled) }}
+        {{- include "git_sync_container" $ | indent 8 }}
         {{- end }}
-        {{- if .Values.dagProcessor.extraContainers }}
-        {{- toYaml .Values.dagProcessor.extraContainers | nindent 8 }}
+        {{- if .extraContainers }}
+        {{- toYaml .extraContainers | nindent 8 }}
         {{- end }}
       volumes:
         - name: config
           configMap:
-            name: {{ template "airflow_config" . }}
-        {{- if .Values.dags.persistence.enabled }}
+            name: {{ template "airflow_config" $ }}
+        {{- if $Global.Values.dags.persistence.enabled }}
         - name: dags
           persistentVolumeClaim:
-            claimName: {{ template "airflow_dags_volume_claim" . }}
-        {{- else if .Values.dags.gitSync.enabled }}
+            claimName: {{ template "airflow_dags_volume_claim" $ }}
+        {{- else if $Global.Values.dags.gitSync.enabled }}
         - name: dags
           emptyDir: {}
         {{- end }}
-        {{- if and .Values.dags.gitSync.enabled .Values.dags.gitSync.sshKeySecret }}
-        {{- include "git_sync_ssh_key_volume" . | indent 8 }}
+        {{- if and $Global.Values.dags.gitSync.enabled $Global.Values.dags.gitSync.sshKeySecret }}
+        {{- include "git_sync_ssh_key_volume" $ | indent 8 }}
         {{- end }}
-        {{- if .Values.dagProcessor.extraVolumes }}
-        {{- toYaml .Values.dagProcessor.extraVolumes | nindent 8 }}
+        {{- if .extraVolumes }}
+        {{- toYaml .extraVolumes | nindent 8 }}
         {{- end }}
-        {{- if .Values.logs.persistence.enabled }}
+        {{- if $Global.Values.logs.persistence.enabled }}
         - name: logs
           persistentVolumeClaim:
-            claimName: {{ template "airflow_logs_volume_claim" . }}
+            claimName: {{ template "airflow_logs_volume_claim" $ }}
         {{- else }}
         - name: logs
           emptyDir: {}
+{{- end }}
 {{- end }}
 {{- end }}
 {{- end }}
