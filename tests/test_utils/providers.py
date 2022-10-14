@@ -14,32 +14,35 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
-from airflow.models.taskmap import TaskMap
-
-if TYPE_CHECKING:
-    from sqlalchemy.orm import Session
-
-    from airflow.models.mappedoperator import MappedOperator
+import semver
 
 
-def expand_mapped_task(
-    mapped: MappedOperator, run_id: str, upstream_task_id: str, length: int, session: Session
-):
-    session.add(
-        TaskMap(
-            dag_id=mapped.dag_id,
-            task_id=upstream_task_id,
-            run_id=run_id,
-            map_index=-1,
-            length=length,
-            keys=None,
-        )
-    )
-    session.flush()
+def object_exists(path: str):
+    """Returns true if importable python object is there."""
+    from airflow.utils.module_loading import import_string
 
-    mapped.expand_mapped_task(run_id, session=session)
-    mapped.get_mapped_ti_count.cache_clear()  # type: ignore[attr-defined]
+    try:
+        import_string(path)
+        return True
+    except ImportError:
+        return False
+
+
+def get_provider_version(provider_name):
+    """
+    Returns provider version given provider package name.
+
+    Example::
+        if provider_version('apache-airflow-providers-cncf-kubernetes') >= (6, 0):
+            raise Exception(
+                "You must now remove `get_kube_client` from PodManager "
+                "and make kube_client a required argument."
+            )
+    """
+    from airflow.providers_manager import ProvidersManager
+
+    info = ProvidersManager().providers[provider_name]
+    return semver.VersionInfo.parse(info.version)
