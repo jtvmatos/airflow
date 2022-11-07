@@ -152,17 +152,6 @@ class KubernetesHook(BaseHook):
         prefixed_name = f"extra__kubernetes__{field_name}"
         return self.conn_extras.get(prefixed_name) or None
 
-    @staticmethod
-    def _deprecation_warning_core_param(deprecation_warnings):
-        settings_list_str = "".join([f"\n\t{k}={v!r}" for k, v in deprecation_warnings])
-        warnings.warn(
-            f"\nApplying core Airflow settings from section [kubernetes] with the following keys:"
-            f"{settings_list_str}\n"
-            "In a future release, KubernetesPodOperator will no longer consider core\n"
-            "Airflow settings; define an Airflow connection instead.",
-            DeprecationWarning,
-        )
-
     def get_conn(self) -> client.ApiClient:
         """Returns kubernetes api session for use with requests"""
         in_cluster = self._coalesce_param(self.in_cluster, self._get_field("in_cluster"))
@@ -283,9 +272,9 @@ class KubernetesHook(BaseHook):
                 plural=plural,
                 name=body_dict["metadata"]["name"],
             )
-            self.log.warning("Deleted SparkApplication with the same name.")
+            self.log.warning("Deleted custom resource with the same name.")
         except client.rest.ApiException:
-            self.log.info("SparkApp %s not found.", body_dict["metadata"]["name"])
+            self.log.info("Custom resource %s not found.", body_dict["metadata"]["name"])
 
         try:
             response = api.create_namespaced_custom_object(
